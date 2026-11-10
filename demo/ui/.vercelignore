@@ -1,0 +1,5 @@
+shots/
+*.png
+!*.ico
+!og.png
+*.md
