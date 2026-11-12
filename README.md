@@ -226,6 +226,39 @@ To re-run (requires `foundry` + `jq` on PATH and `.env` with
 
 Shared helpers live in `demos/failure-modes/_lib.sh`.
 
+## What we got wrong first
+
+Honest log of two real mistakes from the São Paulo build cycle and
+their fixes. Both would have reached the submission as silent-but-weak
+evidence if we had not re-tested the pipeline end-to-end.
+
+**1. The failure-mode scripts almost shipped with no on-chain
+artifacts.** First pass at `demos/failure-modes/*.sh` called `cast
+send` without `--gas-limit`. Foundry's default behaviour is to run
+`eth_estimateGas` against the target before broadcasting; when that
+pre-flight simulation reverts, `cast` bails cleanly without sending
+anything. Judges would have clicked through the gate table and found
+nothing to inspect — the reverts were real, but there was no mined tx
+to reason about. Fix: pass `--gas-limit 300000` explicitly in the
+`send_force` helper so `cast` skips the pre-flight estimate and the
+tx mines with status `Reverted`. All five entries in the
+[failure-mode gate table](#failure-mode-gate-table--move-6) now link
+to a mined-and-Reverted tx on Arbiscan carrying the custom-error
+revert reason in the "Error" field.
+
+**2. First draft of the in-browser ledger panel fetched
+`LEDGER.md` from GitHub raw.** That would have been empty on first
+load — the daily cron does not push its first commit until it fires,
+and Vercel caches the HTML independently of the ledger file. A judge
+opening the live site would have seen "0 settlements". Fix: the
+`#runner` section in `demo/ui/index.html` now reads `CosellEscrow.
+Released` events directly via viem's `eth_getLogs` over the last
+~11 days of Arb Sepolia, chunked at 500k blocks to stay under
+public-RPC limits. The panel hydrates on the first page load from
+on-chain state, shows every settlement (cron-driven and manual),
+and refreshes every 60s so each new cron fire appears within a
+minute.
+
 ## Judging-criteria mapping
 
 | Criterion | Where to look |
