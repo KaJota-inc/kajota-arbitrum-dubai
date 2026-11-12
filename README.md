@@ -184,6 +184,48 @@ Balance delta (USDC, 6-decimal, 1 USDC deposited):
 | Recipient C (registrant) `0xe10C…24A4` | 50% | +0.500000 |
 | **Sum** |  | **+1.000000** — zero dust retained in the escrow |
 
+## Failure-mode gate table — Move 6
+
+Every rejection branch of the primitive is runnable as a standalone
+script in [`demos/failure-modes/`](demos/failure-modes). Each script
+executes against the **live** contracts on Arbitrum Sepolia and
+asserts either a mined-and-Reverted tx or a pre-send simulation
+revert. The transaction hashes below are from the Nov 12, 2026 run
+and link to the Reverted tx on Arbiscan — click any one and read the
+revert reason in the "Error" field. Judges can re-run the same scripts
+against the same contracts at any time; each run produces a fresh
+`productId` so the sequence is independent of earlier rejections.
+
+| # | Rejection branch | Contract | Expected error | Reverted tx |
+| --- | --- | --- | --- | --- |
+| 1 | Deposit into a deactivated listing | `CosellEscrow` | `ListingNotActive(bytes32)` | [`0x2c2be801…0da7`](https://sepolia.arbiscan.io/tx/0x2c2be801ac88194b2e72faba05155ab7e86acffb3fb29688266faa4b41de0da7) |
+| 2 | V2 register with a zero-address recipient | `CosellRegistryV2` | `ZeroRecipient(uint256)` | [`0x7243825b…dd0d`](https://sepolia.arbiscan.io/tx/0x7243825bc24bb9f248fa16d01d49d71061c595b3965137637738192d51dfdd0d) |
+| 3 | V2 register with shares summing to ≠ 10000 BPS | `CosellRegistryV2` | `SharesDoNotSumToDenominator(uint256,uint256)` | [`0x0cd9feed…9a12`](https://sepolia.arbiscan.io/tx/0x0cd9feed992ebae6f7acf8d63856cb8a8260450a7b2e46504dca245e56f09a12) |
+| 4 | Second `release()` on the same depositId | `CosellEscrow` | `DepositNotPending(bytes32)` | [`0x225fe323…8635`](https://sepolia.arbiscan.io/tx/0x225fe3237f2704ad466754030025f7d28393b56c419952b88a0ba8f9c86f8635) |
+| 5 | Buyer `refund()` before `REFUND_DELAY` (14 days) | `CosellEscrow` | `RefundTooEarly(uint64,uint64)` | [`0x78bd8801…396c`](https://sepolia.arbiscan.io/tx/0x78bd8801a548bfff73dee36bfd781015f5a92057d69cfdccb15a2f79281c396c) |
+
+These five cover the full attack surface on v1 escrow + v1/v2 registry
+splitting invariants: wholesaler drafts a deactivated listing (#1),
+agent accidentally fans funds to a burn address (#2), agent crafts a
+split that leaves dust (#3), release authority tries to double-spend
+a deposit (#4), buyer side-steps the settlement window with an
+immediate clawback (#5). Each script uses `cast send --gas-limit` to
+force the tx through gas-estimation so the revert gets mined and
+becomes a judge-verifiable artifact, not just a local simulation.
+
+To re-run (requires `foundry` + `jq` on PATH and `.env` with
+`DEPLOYER_PRIVATE_KEY` + `BUYER_PRIVATE_KEY`):
+
+```bash
+./demos/failure-modes/deactivated-listing-deposit.sh
+./demos/failure-modes/zero-recipient.sh
+./demos/failure-modes/bps-sum-mismatch.sh
+./demos/failure-modes/double-release.sh
+./demos/failure-modes/pre-release-refund.sh
+```
+
+Shared helpers live in `demos/failure-modes/_lib.sh`.
+
 ## Judging-criteria mapping
 
 | Criterion | Where to look |
