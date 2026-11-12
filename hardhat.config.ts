@@ -5,16 +5,17 @@ import HardhatToolboxViem from "@nomicfoundation/hardhat-toolbox-viem";
  * Hardhat 3 config for Kajota Mesh contracts.
  *
  * Networks (target chains):
- *  - Base Sepolia — primary testnet target. Chainlink Functions are
- *    supported on Base Sepolia (DON id: fun-base-sepolia-1). USDC is
- *    available via Circle's testnet faucet (0x036CbD…dCF7e).
- *  - Mantle Sepolia — Mantle Turing Test Phase 2 secondary target;
- *    same bytecode deploys.
+ *  - Arbitrum Sepolia — primary testnet target for the Arbitrum Open
+ *    House São Paulo Online Buildathon. USDC is available via
+ *    Circle's Sepolia faucet (0x75faf114eafb1BDbe2F0316DF893fd58CE46AA4d).
+ *  - Robinhood Chain testnet (chainId 46630) — reserved-slot secondary
+ *    target; same bytecode deploys and a prize is reserved for a
+ *    Robinhood Chain submission per the Prizes & Judging rubric.
  *  - Local (built-in EDR / Hardhat node) — what `pnpm test` uses.
  *
- * RPCs + private key are env-gated. Run `cp ../../.env.example
- * ../../.env` at the repo root and fill in `DEPLOYER_PRIVATE_KEY`
- * before running any `deploy:*` script.
+ * RPCs + private key are env-gated. Run `cp .env.example .env` at the
+ * repo root and fill in `DEPLOYER_PRIVATE_KEY` before running any
+ * `deploy:*` script.
  */
 
 // Hardhat 3's TS config doesn't auto-load .env, so do it explicitly.
@@ -75,13 +76,13 @@ const config: HardhatUserConfig = {
       accounts: deployerAccounts,
       chainId: 5003,
     },
-    // Arbitrum Sepolia — target for Arbitrum Open House Dubai buildathon
-    // (registration opens Oct 31, 2026; submission Nov 16 - Dec 6, 2026).
-    // EVM-equivalent, so the same bytecode used on Ethereum Sepolia ports
-    // cleanly. Circle USDC is live here
-    // (0x75faf114eafb1BDbe2F0316DF893fd58CE46AA4d) and Chainlink Functions
-    // is supported (DON id: fun-arbitrum-sepolia-1). An Arbitrum One /
-    // Orbit redeploy lands during the Dubai submission window.
+    // Arbitrum Sepolia — target for Arbitrum Open House Singapore buildathon
+    // (submission closes Oct 4, 2026 15:59 SGT). EVM-equivalent, so the
+    // same bytecode used on Ethereum Sepolia ports cleanly. Circle USDC is
+    // live here (0x75faf114eafb1BDbe2F0316DF893fd58CE46AA4d) and Chainlink
+    // Functions is supported (DON id: fun-arbitrum-sepolia-1). Buildathon
+    // rules explicitly allow Sepolia; a Robinhood Chain redeploy is an
+    // open item for the "1-of-3 reserved podium slot" lane.
     arbitrumSepolia: {
       type: "http",
       chainType: "l1",
@@ -90,6 +91,22 @@ const config: HardhatUserConfig = {
         "https://sepolia-rollup.arbitrum.io/rpc",
       accounts: deployerAccounts,
       chainId: 421614,
+    },
+    // Robinhood Chain testnet — Arbitrum Orbit L2 launched 2026. The
+    // Singapore buildathon reserves one podium slot per track for
+    // projects deployed here (verbatim from the Prizes & Judging page:
+    // "At minimum, 1 of 3 prizes is reserved for a project building on
+    // Robinhood Chain"). RPC + explorer + faucet from Robinhood docs;
+    // ⚠ mainnet chainId is 4663 — off-by-a-factor-of-10 from this
+    // testnet 46630. Do not confuse; the config here is testnet only.
+    robinhoodTestnet: {
+      type: "http",
+      chainType: "l1",
+      url:
+        process.env.ROBINHOOD_TESTNET_RPC ??
+        "https://rpc.testnet.chain.robinhood.com",
+      accounts: deployerAccounts,
+      chainId: 46630,
     },
   },
   // Etherscan V2 unified API — one key from etherscan.io/arbiscan.io
