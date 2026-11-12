@@ -1,0 +1,66 @@
+# Settlement runner — Move 1 of the Arbitrum Open House São Paulo
+# hackathon-winning playbook. Daily cron that fires one full register →
+# approve → deposit → release cycle against the live v1 CosellRegistry
+# + CosellEscrow on Arbitrum Sepolia and commits a new line to
+# LEDGER.md. The accruing ledger is the development-tied-milestone
+# evidence the São Paulo Prizes & Judging rubric asks for.
+#
+# Required repository secrets:
+#   DEPLOYER_PRIVATE_KEY   signs register (as wholesaler) + release
+#                          (as releaseAuth). Must equal the releaseAuth
+#                          recorded in deployments/421614.json.
+#   BUYER_PRIVATE_KEY      signs approve + deposit. Needs >= 1 USDC +
+#                          tiny ETH on Arbitrum Sepolia. Top up from
+#                          https://faucet.circle.com when low.
+#
+# Optional repository secrets:
+#   ARBITRUM_SEPOLIA_RPC   override the default public RPC with a
+#                          managed endpoint (Alchemy, QuickNode) if the
+#                          public one rate-limits the daily cron.
+name: saopaulo-runner
+
+on:
+  schedule:
+    # 13:00 UTC daily — 10:00 BRT, well after Arbitrum Sepolia's quiet
+    # hours and comfortably before Mar 1, 2027 03:59 UTC submission
+    # close.
+    - cron: "0 13 * * *"
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+concurrency:
+  group: saopaulo-runner
+  cancel-in-progress: false
+
+jobs:
+  settle:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+          persist-credentials: true
+
+      - uses: foundry-rs/foundry-toolchain@v1
+
+      - name: Fire settlement cycle
+        env:
+          DEPLOYER_PRIVATE_KEY: ${{ secrets.DEPLOYER_PRIVATE_KEY }}
+          BUYER_PRIVATE_KEY: ${{ secrets.BUYER_PRIVATE_KEY }}
+          ARBITRUM_SEPOLIA_RPC: ${{ secrets.ARBITRUM_SEPOLIA_RPC }}
+        run: ./scripts/saopaulo-runner.sh
+
+      - name: Commit ledger line
+        run: |
+          if git diff --quiet LEDGER.md; then
+            echo "No ledger change to commit"
+            exit 0
+          fi
+          git config user.name 'saopaulo-runner-bot'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add LEDGER.md
+          git commit -m "chore(ledger): settlement $(date -u +'%Y-%m-%dT%H:%M:%SZ')"
+          git push
