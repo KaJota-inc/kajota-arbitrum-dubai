@@ -12,7 +12,7 @@ coverage/
 # demo/ — local scaffolding and generated dry-run artifacts stay out of git.
 # The shipped UI (demo/ui/) and reproducible pipeline scripts (demo/dryrun*.sh)
 # are the exceptions and ARE committed.
-demo/SHOT_LIST.md
+# demo/SHOT_LIST.md is the shipped video scaffold (not scratch) — committed.
 demo/SUBMIT_FORM.md
 demo/RECORDING.md
 demo/scenes/
