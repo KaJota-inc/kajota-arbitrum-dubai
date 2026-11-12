@@ -171,7 +171,7 @@
 <section class="relative z-10 max-w-7xl mx-auto px-8 pt-28 pb-20">
   <div class="max-w-4xl">
     <div class="flex items-center gap-2 mb-7">
-      <span class="pill">Arbitrum Open House · Singapore</span>
+      <span class="pill">Arbitrum Open House · São Paulo</span>
       <span class="pill chip-lime"><span class="glow-dot"></span>reserved slot: Robinhood Chain</span>
     </div>
     <h1 class="serif text-[72px] md:text-[108px] leading-[0.95] tracking-[-0.03em] font-normal">
@@ -273,6 +273,38 @@
       <a class="underline hover:text-neutral-100" href="https://explorer.testnet.chain.robinhood.com/tx/0x56b1f7bca471c54bfeeea9428fe767010d7057e9845eba01e50a8a420c88e6f4" target="_blank">approve</a> +
       <a class="underline hover:text-neutral-100" href="https://explorer.testnet.chain.robinhood.com/tx/0x6f4e973c5157b72dcd4ea8bcb87dea6a6823631a1aa837944bbb2bfbe644892a" target="_blank">deposit</a> →
       <a class="underline hover:text-neutral-100" href="https://explorer.testnet.chain.robinhood.com/tx/0xfe611e11f020b9b550e8e66df21fdd363c6aff4e58e373a7d98035ccff7bc9d9" target="_blank">release</a>, atomically, zero dust.
+    </div>
+  </div>
+</section>
+
+<section id="runner" class="relative z-10 max-w-7xl mx-auto px-8 pb-24">
+  <div class="flex items-end justify-between mb-7">
+    <div>
+      <div class="text-[10.5px] uppercase tracking-[0.2em] mute-2 mb-3">Move 1 · development-tied milestones</div>
+      <h2 class="serif text-[46px] leading-[1.05] tracking-tight max-w-xl">A cron that <span class="italic">settles daily</span>.</h2>
+    </div>
+    <div class="hidden md:block max-w-sm text-right text-sm mute leading-relaxed">
+      <a class="underline hover:text-neutral-100" href="https://github.com/KaJota-inc/kajota-arbitrum-dubai/blob/main/.github/workflows/saopaulo-runner.yml" target="_blank" rel="noopener">A GitHub Actions cron</a> fires one full
+      <span class="mono text-neutral-200">register → approve → deposit → release</span>
+      cycle on the v1 contracts every day at 13:00 UTC. The ledger below reads
+      <span class="mono text-neutral-200">Released</span> events directly from Arbitrum Sepolia.
+    </div>
+  </div>
+
+  <div class="panel rounded-2xl p-7 hairline">
+    <div class="flex items-center justify-between mb-6">
+      <div>
+        <div class="text-[10.5px] uppercase tracking-[0.15em] mute-2">Settlement ledger</div>
+        <div class="text-xl font-medium mt-1">Recent v1 settlements on <span class="lime mono text-base">Arbitrum Sepolia</span></div>
+      </div>
+      <div class="text-xs mute mono" id="ledgerStatus">loading recent releases…</div>
+    </div>
+
+    <div id="ledgerList" class="space-y-2 text-sm"></div>
+    <div class="text-[11px] mute mt-4">
+      Reads <span class="mono">CosellEscrow.Released</span> events on the v1 Escrow
+      <span class="mono">0x599869…91776</span> over the last ~11 days of blocks.
+      No indexer, no backend — direct <span class="mono">eth_getLogs</span> via viem.
     </div>
   </div>
 </section>
@@ -548,7 +580,7 @@
         <rect x="1.5" y="1.5" width="27" height="27" rx="7" fill="#c3f73a"/>
         <path d="M8.5 20V10l6.5 5.5L21.5 10v10" stroke="#060608" stroke-width="2.2" stroke-linejoin="round" stroke-linecap="round" fill="none"/>
       </svg>
-      <span>Kajota Mesh · built for <span class="text-neutral-300">Arbitrum Open House Singapore</span> · Oct 2026</span>
+      <span>Kajota Mesh · built for <span class="text-neutral-300">Arbitrum Open House São Paulo</span> · Nov 2026 → Mar 2027</span>
     </div>
     <div class="mono text-[11px]">commerce agents · atomic escrow · N-party split</div>
   </div>
@@ -687,6 +719,82 @@
     }
   }
 
+
+  // --- Runner ledger (v1 Released events; feeds the São Paulo cron) -
+  const ESCROW_V1   = '0x599869cef2e4c52e2c9074caaf8f9fb0cb191776';
+  const ESCROW_V1_ABI = parseAbi([
+    'event Released(bytes32 indexed depositId, bytes32 indexed listingId, address wholesaler, address coseller, uint256 wholesalerShare, uint256 cosellerShare)',
+  ]);
+  const releasedV1Event = ESCROW_V1_ABI.find(x => x.type === 'event' && x.name === 'Released');
+
+  async function hydrateLedger() {
+    const statusEl = document.getElementById('ledgerStatus');
+    const listEl   = document.getElementById('ledgerList');
+    if (!statusEl || !listEl) return;
+    try {
+      const latest = await client.getBlockNumber();
+      const windowBlocks = 2000000n;
+      const chunk        = 500000n;
+      const from = latest > windowBlocks ? latest - windowBlocks : 0n;
+
+      const rels = [];
+      for (let s = from; s <= latest; s += chunk) {
+        const e = (s + chunk - 1n > latest) ? latest : s + chunk - 1n;
+        try {
+          const chunkRels = await client.getLogs({
+            address:   ESCROW_V1,
+            event:     releasedV1Event,
+            fromBlock: s,
+            toBlock:   e,
+          });
+          rels.push(...chunkRels);
+        } catch {}
+      }
+      rels.sort((a, b) => Number(b.blockNumber - a.blockNumber));
+      const recent = rels.slice(0, 10);
+
+      if (recent.length === 0) {
+        statusEl.textContent = '0 releases in the last ~11 days';
+        listEl.innerHTML = '<div class="mute mono text-xs">no Released events in this window — the cron will populate this once pushed and the daily trigger runs.</div>';
+        return;
+      }
+
+      const blockTs = new Map();
+      for (const r of recent) {
+        if (!blockTs.has(r.blockNumber)) {
+          try {
+            const b = await client.getBlock({ blockNumber: r.blockNumber });
+            blockTs.set(r.blockNumber, b.timestamp);
+          } catch { blockTs.set(r.blockNumber, 0n); }
+        }
+      }
+
+      listEl.innerHTML = '';
+      for (const r of recent) {
+        const ts = blockTs.get(r.blockNumber) ?? 0n;
+        const dt = ts > 0n ? new Date(Number(ts) * 1000).toISOString().replace(/\.\d+Z$/, 'Z') : '—';
+        const ws = r.args?.wholesalerShare ?? 0n;
+        const cs = r.args?.cosellerShare   ?? 0n;
+        const total = ws + cs;
+        const csPct = total > 0n ? Number((cs * 10000n) / total) / 100 : 0;
+        const wsPct = total > 0n ? (100 - csPct) : 0;
+        const tx = r.transactionHash;
+        const row = document.createElement('div');
+        row.className = 'grid grid-cols-1 md:grid-cols-[auto,1fr,auto] gap-x-4 gap-y-1 items-center hairline rounded-lg px-4 py-3';
+        row.innerHTML = [
+          '<div class="mono text-xs mute">' + dt + '</div>',
+          '<div class="text-neutral-100">' + formatUnits(total, 6) + ' USDC · ' + csPct.toFixed(1) + '% / ' + wsPct.toFixed(1) + '%</div>',
+          '<a class="mono text-xs cyan underline hover:text-neutral-100" target="_blank" rel="noopener" href="https://sepolia.arbiscan.io/tx/' + tx + '">' + tx.slice(0, 10) + '…' + tx.slice(-4) + ' ↗</a>',
+        ].join('');
+        listEl.appendChild(row);
+      }
+
+      statusEl.textContent = rels.length + ' release' + (rels.length === 1 ? '' : 's') + ' in the last ~11 days · showing ' + recent.length;
+    } catch (err) {
+      statusEl.textContent = 'rpc degraded';
+    }
+  }
+
   // --- Split calculator ---
   const PALETTE = ['#c3f73a', '#7dd3fc', '#e879f9', '#fbbf24', '#f472b6', '#60a5fa', '#34d399', '#a78bfa', '#f87171', '#fb923c', '#fde047', '#4ade80', '#22d3ee', '#f9a8d4', '#c084fc', '#fda4af'];
   const defaults = [
@@ -755,7 +863,9 @@
   render();
   hydrate();
   hydrateUsage();
+  hydrateLedger();
   setInterval(hydrateUsage, 45000); // refresh every 45 s
+  setInterval(hydrateLedger, 60000); // refresh ledger every 60 s
 
   // --- Wallet-connected "register your listing" flow ---
   let wallet = null;
